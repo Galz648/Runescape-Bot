@@ -8,6 +8,7 @@ import time
 import mss
 import math
 import pdb
+from random import randint
 # Define Trees as list of all trees detected
 
 monGame = {"top": 50, "left": 60, "width": 820, "height": 600}
@@ -23,18 +24,54 @@ def findScreenCenter(mon_dict):
     y_c = (y1 - y0) / 2
     return int(x_c), int(y_c)
 
-
+class Tracker:
+    def __init__(self, color):
+        self.color = color
+        # create tracker
+        self.tracker = cv2.TrackerMedianFlow_create()
+        
+        
 class TreeTracker:
     def __init__(self, image):
         self.image = image
         self.mon = monWindow
-        self.trackers = {}
+        self.num_active_trackers = 0
+        self.avaliable_trackers = {}
+        self.active_trackers = {}
         self.TREES = []
         self.TREES_INFO = {}
         self.x_c, self.y_c = findScreenCenter(self.mon)
         self.distance = lambda x,y, x_c, y_c: math.sqrt( ((int(self.x_c - x)**2))+int(((self.y_c - y)**2)))
+        self.num_trackers = 3
 
-    def draw_outline(self, image, x, y, width, length):
+        _, self.closest_trees = self.locate_trees(self.image)
+        # initialize trackers objects
+        for i in range(self.num_trackers):
+            rand_color = (randint(0, 255), randint(0, 255), randint(0, 255))
+            t = Tracker(rand_color)
+            self.avaliable_trackers[i] = True, t
+        
+        # Initialize trackers
+        for i, bbox in enumerate(self.closest_trees):
+            avaliable, t = self.avaliable_trackers.get(i)
+            if not t:
+                # the next ones are going to be empty as well
+                break
+            if not avaliable:
+                # should not reach here
+                print(f'tracker-{i} not avaliable')
+                continue
+            # add tracker to avaliable trackers
+            self.active_trackers[i] = True, t
+            
+            self.num_active_trackers += 1
+            # remove tracker object from avaliable_trackers
+            del self.avaliable_trackers[i]
+            # initialize tracker
+            t.tracker.init(self.image, bbox[0])
+            print(f'tracker: {i} created. bbox: {bbox[0]} | dist: {bbox[1]}')
+            
+    def draw_outline(self, image, x, y, width, length, color=(255,255,255)):
         """
         Draws outline correctly based on size of contour found
         Adds outlined trees to list of all trees <TREES>
@@ -50,8 +87,13 @@ class TreeTracker:
             #cv2.rectangle(image, (x - 10, y - 30), (x + width + 15, y + length), (0, 255, 0), 2)
             #cv2.putText(image, 'Tree', (x + width // 2, y + length // 2), 0, 0.4, (255, 255, 0))
     
+        # Float Error
+        x = int(x)
+        y = int(y)
+        width = int(width)
+        length = int(length)
         
-        cv2.rectangle(image, (x, y), (x + width, y + length), (0, 255, 0), 2)
+        cv2.rectangle(image, (x, y), (x + width, y + length), color , 2)
         cv2.putText(image, f'Tree: {x,y}', (x + width // 2, y + length // 2), 0, 0.4, (255, 255, 0))
 
         #x, y = pyautogui.center(rect)
@@ -89,14 +131,14 @@ class TreeTracker:
         # sort the trees by distance from the center
 
         sorted_trees = {k: v for k, v in sorted(self.TREES_INFO.items(), key=lambda item: item[1])} # index:rect(4), dist (1)
-        closest_trees = sorted(self.TREES_INFO.values(), reverse=True)[:3] # index:rect(4), dist (1)
-        
+        self.closest_trees = sorted(self.TREES_INFO.values(), reverse=True)[:self.num_trackers] # index:rect(4), dist (1)
+        print('\n')
         print(f'sorted_trees: {sorted_trees}')
         print('\n -------------------------- \n')
-        print(f'closest_trees: {closest_trees}')
-        print(f'TREES: {len(closest_trees)}')
+        print(f'closest_trees: {self.closest_trees}')
+        print(f'len(closest_trees): {len(self.closest_trees)}')
         
-        return image, closest_trees
+        return image, self.closest_trees
 
     def locate_circular_contour(self, image, contours, hierarchy):
         """
@@ -168,35 +210,109 @@ class TreeTracker:
 
 def main():
     print('starting...')
-    # grab an initial image
-    # find the trees in that image (fix the trees append first)
-    #init_im = np.array(ImageGrab.grab((0, 40, 740, 700)))
+    # grab an initial image, to initialize trackers
     init_im = np.array(mss.mss().grab(monGame))
     t = TreeTracker(init_im)
-    tracker = cv2.TrackerMedianFlow_create()
+    # locate trees on initial image
+    t.locate_trees(init_im)
+    # intialize TreeTracker trackers in
+    # draw trees on the tracked image
+    for it in t.closest_trees:
+        t.draw_outline(init_im, it[0][0], it[0][1], it[0][2], it[0][3])
     
-    #distance = lambda x,y, x_c, y_c: math.sqrt( ((x_c - x)**2)+((y_c - y)**2))
-    #x_c, y_c = findScreenCenter(monWindow)
+    winname = "Tracking"
+    cv2.namedWindow(winname)
+    cv2.moveWindow(winname,1000,700)
+    sleep(0.2)
     
-    while True:
-        t.TREES_INFO = {}
-        # Grab game screen image
-        #game_image = np.array(ImageGrab.grab((0, 40, 700, 500))) # X1,Y1,X2,Y2 # halfscreenleft 40, 40, 700, 700
-        game_image = np.array(mss.mss().grab(monGame))
-        
-        #gray_image = cv2.cvtColor(game_image, cv2.COLOR_BGR2GRAY)
-        # Find trees on game screen
-        #game_image = cv2.cvtColor(game_image, cv2.COLOR_BGR2RGB)
-        new_im, closest_trees = t.locate_trees(game_image)
-        for i in closest_trees:
-            print(f'i:{i}')
-            t.draw_outline(new_im, i[0][0], i[0][1], i[0][2], i[0][3])
-            
-        cv2.imshow('RsBot', new_im)
+    with mss.mss() as sct:
+        while True:
+            im = np.array(sct.grab(monGame))
+            #
+            ## if no Trackers working
+            #if t.num_active_trackers == 0:
+            #    print(f'{t.num_active_trackers} working trackers')
+#
+            #    t.locate_trees(im)
+            #    
+            #    # loop over closest trees
+            #    # same as init
+            #    # reinitialize trackers - give them a bbox to track
+            #    
+            #    # Initialize trackers
+            #    for i, bbox in enumerate(t.closest_trees):
+#
+            #        active, T = t.active_trackers.get(i)
+            #        if not T:
+            #            # the next ones are going to be empty as well
+            #            break
+            #        if active:
+            #            # should not reach here
+            #            print('not avaliable')
+            #            continue
+#
+            #        # initialize tracker
+            #        T.tracker.init(im, bbox[0])
+            #        # draw tracker bbox
+            #        
+            #        t.draw_outline(im, bbox[0][0], bbox[0][1], bbox[0][2], bbox[0][3], T.color)
+            #        print(f'tracker: {i} created. bbox: {bbox[0]} | dist: {bbox[1]}')
+            #        
+            #        # add tracker to avaliable trackers
+            #        t.active_trackers[i] = True, T
+#
+            #        t.num_active_trackers += 1
+            #        # remove tracker object from avaliable_trackers
+            #        del t.avaliable_trackers[i]
+            #else:
+            # Update trackers loop
+            for _, (i,(active,T)) in enumerate(t.active_trackers.items()):
+                if not active:
+                    # the tracker is not avalible for tracking
+                    # but it is active for initial tracking
+                    continue
+                # Update tracker
+                ok, box = T.tracker.update(im)
+                #print(f'tracker {_}: ok: {ok}')
+                if ok:
+                    print(f'OK; atempting to draw outline; tracker index: {i}')
+                    # display and shit
+                    t.draw_outline(im, box[0], box[1], box[2], box[3], T.color)
+                else: # release this tracker
+                    # Add to active trackers
+                    t.active_trackers[i] = False, T
+                    t.num_active_trackers -= 1
+                    print(f'called release tracker: {i}')
+                    print(f'len(active_trackers): {len(t.active_trackers)}')
+                    print(f'len(avaliable_trackers): {len(t.avaliable_trackers)}')
 
-        if cv2.waitKey(25) & 0xFF == ord('q'): # press q to quit
-            cv2.destroyAllWindows()
-            break
+                    #continue
+                    
+            cv2.imshow(winname, im)
+    
+            if cv2.waitKey(25) & 0xFF == ord('q'): # press q to quit
+                cv2.destroyAllWindows()
+                break
+
+#    with mss.mss() as sct:
+#
+#        while True:
+#            t.TREES_INFO = {}
+#            # Grab game screen image
+#            game_image = np.array(sct.grab(monGame))
+#            # locate Trees
+#            _, closest_trees = t.locate_trees(game_image)
+#            
+#            # Draw trees on the image
+#            for i, tree in enumerate(closest_trees):
+#                print(f'tree:{tree}')
+#                t.draw_outline(game_image, tree[0][0], tree[0][1], tree[0][2], tree[0][3])
+#                # Display the image
+#                cv2.imshow('game_image', game_image)
+#                    
+#            if cv2.waitKey(25) & 0xFF == ord('q'): # press q to quit
+#                cv2.destroyAllWindows()
+#                break
 """
 # ORIGINAL MAIN
 def main():
