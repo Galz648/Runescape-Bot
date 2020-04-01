@@ -4,9 +4,11 @@
 A modification on the tracker_example.py file
 1. on init - take the closest tree and track it
     1. get the closest trees function to work on here - CHECK
-    2. get the closest tree - HERE
-    3. initiate the tracker with the closest tree info
-2. upload change to github
+    2. get the closest tree - CHECK
+    3. initiate the tracker with the closest tree info - CHECK
+2. upload change to github - CHECK
+3. handle not finding a tree on the first frame -- search for tree again - CHECK
+4. upload change to github
 """
 
 import numpy as np
@@ -102,14 +104,12 @@ class TreeTracker:
         # sort the trees by distance from the center
 
         #sorted_trees = {k: v for k, v in sorted(self.TREES_INFO.items(), key=lambda item: item[1])} # index:rect(4), dist (1)
-        closest_trees = sorted(self.TREES_INFO.values())[:3] # index:rect(4), dist (1)
+        self.closest_trees = sorted(self.TREES_INFO.values())[:3] # index:rect(4), dist (1)
         
         #print(f'sorted_trees: {sorted_trees}')
         print('\n -------------------------- \n')
-        print(f'closest_trees: {closest_trees}')
-        print(f'TREES: {len(closest_trees)}')
-        
-        return image, closest_trees
+        print(f'closest_trees: {self.closest_trees}')
+        print(f'TREES: {len(self.closest_trees)}')
 
     def locate_circular_contour(self, image, contours, hierarchy):
         """
@@ -235,15 +235,16 @@ def main():
         init_im = np.array(sct.grab(monGame))
         tt = TreeTracker(init_im)
         # get the closest tree in the image
-        _, closest_trees = tt.locate_trees(init_im)
-        len(closest_trees)
-        if not closest_trees:
-            # there are no trees
-            print('Trees not found; RETURNING')
-            return
-        elif closest_trees:
+        tt.locate_trees(init_im)
+        while not tt.closest_trees:
+            init_im = np.array(sct.grab(monGame))
+            
+            print('Trees not found; ')
+            tt.locate_trees(init_im)
+        
+        if tt.closest_trees:
             # one tree at least - get closest tree
-            chosen_tree = closest_trees[0]
+            chosen_tree = tt.closest_trees[0]
             chosen_bbox = chosen_tree[0]
             # initialize the tracker
             is_init = tracker.init(init_im, chosen_bbox)
@@ -276,7 +277,7 @@ def main():
 
             else:
                 # tracker got lost
-                print('NOT OK')
+                print(f'NOT OK')
                 break
             cv2.imshow(winname, im)
 
