@@ -2,12 +2,16 @@
 
 """
 A modification on the tracker_locate_example.py file
+
 1. on init - take the closest trees and track them
     1. get the closest trees function to work on here -- CHECK
     2. initiate the trackers with the closest tree info -- CHECK
-2. upload change to github -- HERE
-3. handle not finding a tree on the first frame -- search for trees again
-4. upload change to github
+2. upload change to github -- CHECK
+3. handle not finding a tree on the first frame -- search for trees again -- CHECK
+5. track trees in loop
+    1. add logs
+6. upload to github
+
 """
 
 import numpy as np
@@ -246,6 +250,7 @@ def main():
         
         # trees are found
         if tt.closest_trees:
+            run = True
             _ = min(n, len(tt.closest_trees))           
             for i in range(_):
                 # create tracker object
@@ -262,28 +267,46 @@ def main():
                     print(f'Tracker i: {i} initialized | bbox,dist: {chosen_bbox},{chosen_tree[1]}')
                 elif not is_init:
                     print(f'Tracker i: {i} failed on init')
-                    
+        
         # stack tracking that tree
         while run:
+            trackers_to_release = []
+            # CHANGE INDICATOR
             im = np.array(sct.grab(monGame))
-            # Update tracker
-            ok, box = tracker.update(im)
-    		#print(f'ok: {ok}')
+            for i,t in enumerate(trackers):      
+                # Update tracker
+                ok, box = t.update(im)
+    		    #print(f'ok: {ok}')
+
+                if ok:
+                    #print(f'box: {box}')
+                    # Draw bounding box
+                    p1 = (int(box[0]), int(box[1]))
+                    p2 = (int(box[0] + box[2]), int(box[1] + box[3]))
+                    cv2.rectangle(im, p1, p2, (0,0,0), 2, 1)
 
 
-            if ok:
-                #print(f'box: {box}')
-                # Draw bounding box
-                p1 = (int(box[0]), int(box[1]))
-                p2 = (int(box[0] + box[2]), int(box[1] + box[3]))
-                cv2.rectangle(im, p1, p2, (0,0,0), 2, 1)
 
-
-
-            else:
-                # tracker got lost
-                print(f'NOT OK')
-                break
+                else:
+                    # tracker got lost
+                    print(f'LOST tracker: {i} -> removing')
+                    trackers_to_release.append(i)
+                    continue
+                
+            # release lost trackers
+            for i in trackers_to_release:
+                try:
+                    rt = trackers[i]
+                    if rt:
+                        trackers.remove(rt)
+                    else:
+                        print('tracker index not found trackers')
+                        continue
+                except Exception as e:
+                    print(e)
+                    break
+                # Tracker log
+                
             cv2.imshow(winname, im)
 
             if cv2.waitKey(25) & 0xFF == ord('q'): # press q to quit
