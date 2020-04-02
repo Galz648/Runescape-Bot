@@ -8,10 +8,14 @@ A modification on the tracker_locate_example.py file
     2. initiate the trackers with the closest tree info -- CHECK
 2. upload change to github -- CHECK
 3. handle not finding a tree on the first frame -- search for trees again -- CHECK
-5. track trees in loop
-    1. add logs
-6. upload to github
-
+5. track trees in loop -- CHECK
+6. upload to github -- CHECK
+7. test trackers getting off the screen -- CHECK
+8. test the closest trees function -- CHECK
+9. test restating a tracker -- CHECK (couldn't find alternative. discard this)
+10. how do the trackers re instantiate them selves? recreate the object  -- CHECK
+11. upload to github after change in 10.
+12. factorize the code in main
 """
 
 import numpy as np
@@ -106,8 +110,8 @@ class TreeTracker:
         # sort the trees by distance from the center
 
         #sorted_trees = {k: v for k, v in sorted(self.TREES_INFO.items(), key=lambda item: item[1])} # index:rect(4), dist (1)
-        self.closest_trees = sorted(self.TREES_INFO.values())[:3] # index:rect(4), dist (1)
-        
+        self.closest_trees = sorted(self.TREES_INFO.values(), key=lambda item: item[1])[:3] # index:rect(4), dist (1)
+
         #print(f'sorted_trees: {sorted_trees}')
         print('\n -------------------------- \n')
         print(f'closest_trees: {self.closest_trees}')
@@ -177,58 +181,16 @@ class TreeTracker:
         
 
 
-
-
-
-
-
-
-colors = []
-bboxes = []
-num_bboxes = 1
-
 # capture screen with mss
 monGame = {"top": 50, "left": 60, "width": 820, "height": 600}
-
-## Grab the data
-#init_im = np.array(mss.mss().grab(monGame))
-
-#tracker = cv2.TrackerBoosting_create() # tracker gets fucked
-#tracker_func= cv2.TrackerMedianFlow_create
-#tracker = cv2.TrackerCSRT_create() # Error
-#tracker = cv2.TrackerKCF_create() # Error
-#tracker = cv2.TrackerMIL_create() # gets lost on tree regrowth
-#tracker = cv2.TrackerTLD_create() # shit tracker
-#tracker = cv2.TrackerMOSSE_create() # Error
-
-## SELECT ROI
-#for b in range(num_bboxes):
-#	# Define anpytho initial bounding box
-#	bbox = cv2.selectROI('select', init_im, False)
-#	bboxes.append(bbox)
-#	colors.append((randint(0, 255), randint(0, 255), randint(0, 255)))
-#	print(f'created bbox -{b}-')
-
-## x,y,w,h
-#bbox_num = 0
-#for bbox in bboxes:
-#	tracker.init(init_im, bbox)
-#	#print(f'r: {r}')
-#	print(f'bbox: {bbox_num} | {bbox}')
-#	bbox_num += 1
- 
-#
+monGame = monWindow
 
 
-winname = "Tracking"
-cv2.namedWindow(winname)        # Create a named window
-cv2.moveWindow(winname,900,600)  # Move it to (40,30)
-## CONTROL WINDOWS 
-cv2.destroyWindow('select')
-
-#input('continue?')
-#pdb.set_trace()
 def main():
+    winname = "Tracking"
+    cv2.namedWindow(winname)        # Create a named window
+    cv2.moveWindow(winname,900,600) 
+
     sleep(0.2)
     # Max number of trackers
     tracker_func = cv2.TrackerMedianFlow_create
@@ -267,15 +229,19 @@ def main():
                     print(f'Tracker i: {i} initialized | bbox,dist: {chosen_bbox},{chosen_tree[1]}')
                 elif not is_init:
                     print(f'Tracker i: {i} failed on init')
-        
-        # stack tracking that tree
+    
+        released_trackers = [] 
         while run:
             trackers_to_release = []
             # CHANGE INDICATOR
             im = np.array(sct.grab(monGame))
-            for i,t in enumerate(trackers):      
+            for i,t in enumerate(trackers):
+                #print(f'type(t): {type(t)}')
                 # Update tracker
                 ok, box = t.update(im)
+                if box[0] == (0.0, 0.0, 0.0, 0.0):
+                    print('HIT')
+                    break
     		    #print(f'ok: {ok}')
 
                 if ok:
@@ -291,21 +257,56 @@ def main():
                     # tracker got lost
                     print(f'LOST tracker: {i} -> removing')
                     trackers_to_release.append(i)
+                    trackers_to_release.sort()
                     continue
                 
             # release lost trackers
-            for i in trackers_to_release:
+            m = min(len(trackers_to_release), len(trackers))
+            for i in range(m):
                 try:
                     rt = trackers[i]
                     if rt:
                         trackers.remove(rt)
+                        released_trackers.append(rt)
                     else:
-                        print('tracker index not found trackers')
+                        print('tracker index not found in trackers')
                         continue
                 except Exception as e:
                     print(e)
                     break
-                # Tracker log
+            
+            # Tracker Info Log
+            if len(trackers) == 0:
+                print('<0> trackers, starting recovery routine...')
+                im = np.array(sct.grab(monGame))
+                # detect new potential trees
+                tt.locate_trees(im)
+                while not tt.closest_trees:
+                    im = np.array(sct.grab(monGame))
+        
+                    print('Trees not found;')
+                    tt.locate_trees(im)
+                
+                # trees are found
+                if tt.closest_trees:
+                    _ = min(n, len(tt.closest_trees))           
+                    for i in range(_): # number of trackers
+                        rt = released_trackers[i]              
+                        # get desired tree
+                        chosen_tree = tt.closest_trees[i]
+                        chosen_bbox = chosen_tree[0]
+                        # Initialize tracker
+                        #rt.__init__(im, chosen_bbox)
+                        rt = tracker_func()
+                        is_init = rt.init(im, chosen_bbox)
+                        if is_init:
+                            print(f'Tracker i: {i} initialized | bbox,dist: {chosen_bbox},{chosen_tree[1]}')
+                            # add to trackers
+                            #input('continue?')
+                            trackers.append(rt)
+                        elif not is_init:
+                            print(f'Tracker i: {i} failed on RE-init')
+                            break
                 
             cv2.imshow(winname, im)
 
